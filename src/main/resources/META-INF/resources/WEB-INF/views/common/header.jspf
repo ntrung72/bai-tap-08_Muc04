@@ -1,0 +1,14 @@
+<%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+<header class="topbar">
+    <a class="brand" href="${pageContext.request.contextPath}/admin/categories">ShopNamTrung</a>
+</header>
+<div class="admin-layout">
+    <aside class="sidebar">
+        <a class="nav-item ${activeMenu eq 'category' ? 'active' : ''}"
+           href="${pageContext.request.contextPath}/admin/categories">Danh mục</a>
+        <a class="nav-item ${activeMenu eq 'product' ? 'active' : ''}"
+           href="${pageContext.request.contextPath}/admin/products">Sản phẩm</a>
+        <a class="nav-item ${activeMenu eq 'user' ? 'active' : ''}"
+           href="${pageContext.request.contextPath}/admin/users">Người dùng</a>
+    </aside>
+    <main class="main-content">
