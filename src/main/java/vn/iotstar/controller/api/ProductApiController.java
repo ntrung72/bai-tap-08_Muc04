@@ -1,120 +1,281 @@
 package vn.iotstar.controller.api;
 
-import java.util.List;
+import java.math.BigDecimal;
+import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import jakarta.validation.Valid;
-import vn.iotstar.dto.ApiResponse;
-import vn.iotstar.dto.ProductRequest;
-import vn.iotstar.dto.ProductResponse;
+import vn.iotstar.model.Category;
 import vn.iotstar.model.Product;
+import vn.iotstar.model.Response;
+import vn.iotstar.service.CategoryService;
+import vn.iotstar.service.IStorageService;
 import vn.iotstar.service.ProductService;
-import vn.iotstar.service.ImageStorageService;
 
 @RestController
-@RequestMapping("/api/product")
+@RequestMapping(path = "/api/product")
 public class ProductApiController {
-    private final ProductService service;
-    private final ImageStorageService imageStorageService;
+    private final ProductService productService;
+    private final CategoryService categoryService;
+    private final IStorageService storageService;
 
-    public ProductApiController(ProductService service, ImageStorageService imageStorageService) {
-        this.service = service;
-        this.imageStorageService = imageStorageService;
+    public ProductApiController(
+            ProductService productService,
+            CategoryService categoryService,
+            IStorageService storageService) {
+        this.productService = productService;
+        this.categoryService = categoryService;
+        this.storageService = storageService;
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<ProductResponse>>> getAll(
+    public ResponseEntity<?> getAllProduct(
             @RequestParam(defaultValue = "") String keyword) {
-        List<ProductResponse> products = service.findAll(keyword).stream()
-                .map(ProductResponse::new)
-                .toList();
-        return ResponseEntity.ok(ApiResponse.success("Lấy danh sách sản phẩm thành công.", products));
+        return new ResponseEntity<Response>(
+                new Response(
+                        true,
+                        "Thành công",
+                        productService.findAll(keyword)),
+                HttpStatus.OK);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<ProductResponse>> getById(@PathVariable Integer id) {
-        return ResponseEntity.ok(ApiResponse.success("Lấy thông tin sản phẩm thành công.",
-                new ProductResponse(service.findById(id))));
-    }
-
-    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<ProductResponse>> create(
-            @Valid @RequestBody ProductRequest request) {
-        validateDuplicateName(request.getName(), null);
-        Product product = service.create(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Thêm sản phẩm thành công.", new ProductResponse(product)));
-    }
-
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<ProductResponse>> createWithImage(
-            @Valid @RequestPart("data") ProductRequest request,
-            @RequestPart(value = "image", required = false) MultipartFile image) {
-        String storedImage = imageStorageService.store(image, "product");
-        request.setImage(storedImage);
+    @PostMapping(path = "/getProduct")
+    public ResponseEntity<?> getProduct(
+            @Validated @RequestParam("id") Integer id) {
         try {
-            return create(request);
+            Product product = productService.findById(id);
+            return new ResponseEntity<Response>(
+                    new Response(true, "Thành công", product),
+                    HttpStatus.OK);
+        } catch (IllegalArgumentException ex) {
+            return new ResponseEntity<Response>(
+                    new Response(false, ex.getMessage(), null),
+                    HttpStatus.NOT_FOUND);
+        }
+    }
+
+    @PostMapping(path = "/addProduct")
+    public ResponseEntity<?> addProduct(
+            @Validated @RequestParam("productName") String productName,
+            @RequestParam(value = "imageFile", required = false) MultipartFile imageFile,
+            @Validated @RequestParam("unitPrice") BigDecimal unitPrice,
+            @RequestParam(value = "description", defaultValue = "") String description,
+            @Validated @RequestParam("categoryId") Integer categoryId,
+            @Validated @RequestParam("quantity") Integer quantity) {
+        ResponseEntity<?> validationResponse = validateProduct(
+                productName,
+                unitPrice,
+                quantity,
+                categoryId,
+                null);
+        if (validationResponse != null) {
+            return validationResponse;
+        }
+
+        Category category;
+        try {
+            category = categoryService.findById(categoryId);
+        } catch (IllegalArgumentException ex) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Không tìm thấy Category", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        Product product = new Product();
+        String storedImage = storeImage(imageFile, "product");
+        setProductData(
+                product,
+                productName,
+                unitPrice,
+                quantity,
+                description,
+                category,
+                storedImage);
+
+        try {
+            productService.save(product);
+            return new ResponseEntity<Response>(
+                    new Response(true, "Thêm Thành công", product),
+                    HttpStatus.OK);
         } catch (RuntimeException ex) {
-            imageStorageService.delete(storedImage, "product");
+            deleteImage(storedImage);
             throw ex;
         }
     }
 
-    @PutMapping(path = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<ProductResponse>> update(@PathVariable Integer id,
-            @Valid @RequestBody ProductRequest request) {
-        service.findById(id);
-        validateDuplicateName(request.getName(), id);
-        Product product = service.update(id, request);
-        return ResponseEntity.ok(ApiResponse.success("Cập nhật sản phẩm thành công.",
-                new ProductResponse(product)));
-    }
-
-    @PutMapping(path = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<ProductResponse>> updateWithImage(@PathVariable Integer id,
-            @Valid @RequestPart("data") ProductRequest request,
-            @RequestPart(value = "image", required = false) MultipartFile image) {
-        Product current = service.findById(id);
-        String oldImage = current.getImage();
-        String storedImage = imageStorageService.store(image, "product");
-        request.setImage(storedImage == null ? oldImage : storedImage);
+    @PutMapping(path = "/updateProduct")
+    public ResponseEntity<?> updateProduct(
+            @Validated @RequestParam("productId") Integer productId,
+            @Validated @RequestParam("productName") String productName,
+            @RequestParam(value = "imageFile", required = false) MultipartFile imageFile,
+            @Validated @RequestParam("unitPrice") BigDecimal unitPrice,
+            @RequestParam(value = "description", defaultValue = "") String description,
+            @Validated @RequestParam("categoryId") Integer categoryId,
+            @Validated @RequestParam("quantity") Integer quantity) {
+        Product product;
 
         try {
-            ResponseEntity<ApiResponse<ProductResponse>> response = update(id, request);
-            if (storedImage != null) imageStorageService.delete(oldImage, "product");
-            return response;
+            product = productService.findById(productId);
+        } catch (IllegalArgumentException ex) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Không tìm thấy Product", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        ResponseEntity<?> validationResponse = validateProduct(
+                productName,
+                unitPrice,
+                quantity,
+                categoryId,
+                productId);
+        if (validationResponse != null) {
+            return validationResponse;
+        }
+
+        Category category;
+        try {
+            category = categoryService.findById(categoryId);
+        } catch (IllegalArgumentException ex) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Không tìm thấy Category", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        String oldImage = product.getImage();
+        String storedImage = storeImage(imageFile, "product");
+        String productImage = storedImage == null ? oldImage : storedImage;
+
+        setProductData(
+                product,
+                productName,
+                unitPrice,
+                quantity,
+                description,
+                category,
+                productImage);
+
+        try {
+            productService.save(product);
+            if (storedImage != null) {
+                deleteImage(oldImage);
+            }
+            return new ResponseEntity<Response>(
+                    new Response(true, "Cập nhật Thành công", product),
+                    HttpStatus.OK);
         } catch (RuntimeException ex) {
-            imageStorageService.delete(storedImage, "product");
+            deleteImage(storedImage);
             throw ex;
         }
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<ProductResponse>> delete(@PathVariable Integer id) {
-        Product entity = service.findById(id);
-        ProductResponse product = new ProductResponse(entity);
-        service.deleteById(id);
-        imageStorageService.delete(entity.getImage(), "product");
-        return ResponseEntity.ok(ApiResponse.success("Xóa sản phẩm thành công.", product));
+    @DeleteMapping(path = "/deleteProduct")
+    public ResponseEntity<?> deleteProduct(
+            @Validated @RequestParam("productId") Integer productId) {
+        Product product;
+
+        try {
+            product = productService.findById(productId);
+        } catch (IllegalArgumentException ex) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Không tìm thấy Product", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        productService.deleteById(productId);
+        deleteImage(product.getImage());
+
+        return new ResponseEntity<Response>(
+                new Response(true, "Xóa Thành công", product),
+                HttpStatus.OK);
     }
 
-    private void validateDuplicateName(String name, Integer excludedId) {
-        if (service.nameExists(name, excludedId)) {
-            throw new IllegalStateException("Tên sản phẩm đã tồn tại.");
+    private ResponseEntity<?> validateProduct(
+            String productName,
+            BigDecimal unitPrice,
+            Integer quantity,
+            Integer categoryId,
+            Integer excludedId) {
+        if (productName == null || productName.isBlank()) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Tên sản phẩm không được để trống.", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        if (unitPrice == null || unitPrice.compareTo(BigDecimal.ZERO) < 0) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Đơn giá phải lớn hơn hoặc bằng 0.", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        if (quantity == null || quantity < 0) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Số lượng phải lớn hơn hoặc bằng 0.", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        if (categoryId == null || categoryId <= 0) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Danh mục không hợp lệ.", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        if (productService.nameExists(productName, excludedId)) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Sản phẩm này đã tồn tại trong hệ thống", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        return null;
+    }
+
+    private void setProductData(
+            Product product,
+            String productName,
+            BigDecimal unitPrice,
+            Integer quantity,
+            String description,
+            Category category,
+            String image) {
+        product.setName(productName);
+        product.setPrice(unitPrice);
+        product.setQuantity(quantity);
+        product.setDescription(description);
+        product.setCategory(category);
+        product.setImage(image);
+    }
+
+    private String storeImage(MultipartFile file, String folder) {
+        if (file == null || file.isEmpty()) {
+            return null;
+        }
+
+        UUID uuid = UUID.randomUUID();
+        String filename = storageService.getSorageFilename(
+                file,
+                uuid.toString());
+        String storeFilename = folder + "/" + filename;
+        storageService.store(file, storeFilename);
+        return storeFilename;
+    }
+
+    private void deleteImage(String storeFilename) {
+        if (storeFilename == null || storeFilename.isBlank()) {
+            return;
+        }
+
+        try {
+            storageService.delete(storeFilename);
+        } catch (Exception ex) {
         }
     }
 }

@@ -1,127 +1,196 @@
 package vn.iotstar.controller.api;
 
-import java.util.List;
+import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import jakarta.validation.Valid;
-import vn.iotstar.dto.ApiResponse;
-import vn.iotstar.dto.CategoryRequest;
 import vn.iotstar.model.Category;
+import vn.iotstar.model.Response;
 import vn.iotstar.service.CategoryService;
-import vn.iotstar.service.ImageStorageService;
+import vn.iotstar.service.IStorageService;
 
 @RestController
-@RequestMapping("/api/category")
+@RequestMapping(path = "/api/category")
 public class CategoryApiController {
-    private final CategoryService service;
-    private final ImageStorageService imageStorageService;
+    private final CategoryService categoryService;
+    private final IStorageService storageService;
 
-    public CategoryApiController(CategoryService service, ImageStorageService imageStorageService) {
-        this.service = service;
-        this.imageStorageService = imageStorageService;
+    public CategoryApiController(
+            CategoryService categoryService,
+            IStorageService storageService) {
+        this.categoryService = categoryService;
+        this.storageService = storageService;
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Category>>> getAll(
+    public ResponseEntity<?> getAllCategory(
             @RequestParam(defaultValue = "") String keyword) {
-        return ResponseEntity.ok(ApiResponse.success("Lấy danh sách danh mục thành công.",
-                service.findAll(keyword)));
+        return new ResponseEntity<Response>(
+                new Response(
+                        true,
+                        "Thành công",
+                        categoryService.findAll(keyword)),
+                HttpStatus.OK);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Category>> getById(@PathVariable Integer id) {
-        return ResponseEntity.ok(ApiResponse.success("Lấy thông tin danh mục thành công.",
-                service.findById(id)));
+    @PostMapping(path = "/getCategory")
+    public ResponseEntity<?> getCategory(
+            @Validated @RequestParam("id") Integer id) {
+        try {
+            Category category = categoryService.findById(id);
+            return new ResponseEntity<Response>(
+                    new Response(true, "Thành công", category),
+                    HttpStatus.OK);
+        } catch (IllegalArgumentException ex) {
+            return new ResponseEntity<Response>(
+                    new Response(false, ex.getMessage(), null),
+                    HttpStatus.NOT_FOUND);
+        }
     }
 
-    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<Category>> create(@Valid @RequestBody CategoryRequest request) {
-        validateDuplicateName(request.getName(), null);
+    @PostMapping(path = "/addCategory")
+    public ResponseEntity<?> addCategory(
+            @Validated @RequestParam("categoryName") String categoryName,
+            @RequestParam(value = "icon", required = false) MultipartFile icon) {
+        if (categoryName == null || categoryName.isBlank()) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Tên danh mục không được để trống.", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        if (categoryService.nameExists(categoryName, null)) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Category đã tồn tại trong hệ thống", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
         Category category = new Category();
-        copyRequest(request, category);
-        Category saved = service.save(category);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Thêm danh mục thành công.", saved));
-    }
+        String storedImage = storeImage(icon, "category");
+        category.setName(categoryName);
+        category.setIcon(storedImage);
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<Category>> createWithImage(
-            @Valid @RequestPart("data") CategoryRequest request,
-            @RequestPart(value = "image", required = false) MultipartFile image) {
-        String storedImage = imageStorageService.store(image, "category");
-        request.setIcon(storedImage);
         try {
-            return create(request);
+            categoryService.save(category);
+            return new ResponseEntity<Response>(
+                    new Response(true, "Thêm Thành công", category),
+                    HttpStatus.OK);
         } catch (RuntimeException ex) {
-            imageStorageService.delete(storedImage, "category");
+            deleteImage(storedImage);
             throw ex;
         }
     }
 
-    @PutMapping(path = "/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<Category>> update(@PathVariable Integer id,
-            @Valid @RequestBody CategoryRequest request) {
-        Category category = service.findById(id);
-        validateDuplicateName(request.getName(), id);
-        copyRequest(request, category);
-        return ResponseEntity.ok(ApiResponse.success("Cập nhật danh mục thành công.",
-                service.save(category)));
-    }
-
-    @PutMapping(path = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<Category>> updateWithImage(@PathVariable Integer id,
-            @Valid @RequestPart("data") CategoryRequest request,
-            @RequestPart(value = "image", required = false) MultipartFile image) {
-        Category current = service.findById(id);
-        String oldImage = current.getIcon();
-        String storedImage = imageStorageService.store(image, "category");
-        request.setIcon(storedImage == null ? oldImage : storedImage);
+    @PutMapping(path = "/updateCategory")
+    public ResponseEntity<?> updateCategory(
+            @Validated @RequestParam("categoryId") Integer categoryId,
+            @Validated @RequestParam("categoryName") String categoryName,
+            @RequestParam(value = "icon", required = false) MultipartFile icon) {
+        Category category;
 
         try {
-            ResponseEntity<ApiResponse<Category>> response = update(id, request);
-            if (storedImage != null) imageStorageService.delete(oldImage, "category");
-            return response;
+            category = categoryService.findById(categoryId);
+        } catch (IllegalArgumentException ex) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Không tìm thấy Category", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        if (categoryName == null || categoryName.isBlank()) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Tên danh mục không được để trống.", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        if (categoryService.nameExists(categoryName, categoryId)) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Category đã tồn tại trong hệ thống", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        String oldImage = category.getIcon();
+        String storedImage = storeImage(icon, "category");
+        category.setName(categoryName);
+
+        if (storedImage != null) {
+            category.setIcon(storedImage);
+        }
+
+        try {
+            categoryService.save(category);
+            if (storedImage != null) {
+                deleteImage(oldImage);
+            }
+            return new ResponseEntity<Response>(
+                    new Response(true, "Cập nhật Thành công", category),
+                    HttpStatus.OK);
         } catch (RuntimeException ex) {
-            imageStorageService.delete(storedImage, "category");
+            deleteImage(storedImage);
             throw ex;
         }
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Category>> delete(@PathVariable Integer id) {
-        Category category = service.findById(id);
+    @DeleteMapping(path = "/deleteCategory")
+    public ResponseEntity<?> deleteCategory(
+            @Validated @RequestParam("categoryId") Integer categoryId) {
+        Category category;
+
         try {
-            service.deleteById(id);
+            category = categoryService.findById(categoryId);
+        } catch (IllegalArgumentException ex) {
+            return new ResponseEntity<Response>(
+                    new Response(false, "Không tìm thấy Category", null),
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        try {
+            categoryService.deleteById(categoryId);
+            deleteImage(category.getIcon());
+            return new ResponseEntity<Response>(
+                    new Response(true, "Xóa Thành công", category),
+                    HttpStatus.OK);
         } catch (DataIntegrityViolationException ex) {
-            throw new IllegalStateException("Không thể xóa vì danh mục đang được sản phẩm sử dụng.");
-        }
-        imageStorageService.delete(category.getIcon(), "category");
-        return ResponseEntity.ok(ApiResponse.success("Xóa danh mục thành công.", category));
-    }
-
-    private void validateDuplicateName(String name, Integer excludedId) {
-        if (service.nameExists(name, excludedId)) {
-            throw new IllegalStateException("Tên danh mục đã tồn tại.");
+            return new ResponseEntity<Response>(
+                    new Response(
+                            false,
+                            "Không thể xóa vì danh mục đang được sản phẩm sử dụng.",
+                            null),
+                    HttpStatus.BAD_REQUEST);
         }
     }
 
-    private void copyRequest(CategoryRequest request, Category category) {
-        category.setName(request.getName());
-        category.setIcon(request.getIcon());
+    private String storeImage(MultipartFile file, String folder) {
+        if (file == null || file.isEmpty()) {
+            return null;
+        }
+
+        UUID uuid = UUID.randomUUID();
+        String filename = storageService.getSorageFilename(
+                file,
+                uuid.toString());
+        String storeFilename = folder + "/" + filename;
+        storageService.store(file, storeFilename);
+        return storeFilename;
+    }
+
+    private void deleteImage(String storeFilename) {
+        if (storeFilename == null || storeFilename.isBlank()) {
+            return;
+        }
+
+        try {
+            storageService.delete(storeFilename);
+        } catch (Exception ex) {
+        }
     }
 }

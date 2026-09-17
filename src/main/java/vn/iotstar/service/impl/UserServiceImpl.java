@@ -43,8 +43,12 @@ public class UserServiceImpl implements UserService {
         user.setUserName(TextEncodingUtils.normalize(user.getUserName()).trim());
         user.setFullName(TextEncodingUtils.normalize(user.getFullName()).trim());
         user.setPhone(TextEncodingUtils.normalize(user.getPhone()).trim());
-        if (user.getAvatar() != null) user.setAvatar(user.getAvatar().trim());
-        if (user.getCreatedDate() == null) user.setCreatedDate(LocalDate.now());
+        if (user.getAvatar() != null) {
+            user.setAvatar(user.getAvatar().trim());
+        }
+        if (user.getCreatedDate() == null) {
+            user.setCreatedDate(LocalDate.now());
+        }
         return repository.save(user);
     }
 

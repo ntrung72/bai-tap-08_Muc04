@@ -1,43 +1,93 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
 <div class="page-heading">
-    <div><h1>Quản lý danh mục</h1></div>
-    <button class="btn btn-primary" id="add-category-button" type="button">+ Thêm danh mục</button>
+    <div>
+        <h1>Quản lý danh mục</h1>
+    </div>
+    <button class="btn btn-primary" id="add-category-button" type="button">
+        + Thêm danh mục
+    </button>
 </div>
+
 <div id="category-message" class="alert" hidden></div>
+
 <form class="search-box" id="category-search-form">
-    <input type="search" id="category-keyword" placeholder="Nhập tên danh mục...">
+    <input
+        type="search"
+        id="category-keyword"
+        placeholder="Nhập tên danh mục...">
     <button class="btn btn-primary" type="submit">Tìm kiếm</button>
-    <button class="btn btn-light" id="category-clear-button" type="button">Xóa lọc</button>
+    <button class="btn btn-light" id="category-clear-button" type="button">
+        Xóa lọc
+    </button>
 </form>
+
 <div class="card table-wrap">
     <table>
-        <thead><tr><th>ID</th><th>Ảnh</th><th>Tên danh mục</th><th class="actions-col">Hành động</th></tr></thead>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Ảnh</th>
+                <th>Tên danh mục</th>
+                <th class="actions-col">Hành động</th>
+            </tr>
+        </thead>
         <tbody id="category-table-body">
-            <tr><td colspan="4" class="empty">Đang tải dữ liệu...</td></tr>
+            <tr>
+                <td colspan="4" class="empty">Đang tải dữ liệu...</td>
+            </tr>
         </tbody>
     </table>
 </div>
 
 <div class="modal-overlay" id="category-modal" hidden>
-    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="category-modal-title">
+    <section
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="category-modal-title">
         <div class="modal-header">
             <h2 id="category-modal-title">Thêm danh mục</h2>
-            <button class="modal-close" id="category-modal-close" type="button" aria-label="Đóng">&times;</button>
+            <button
+                class="modal-close"
+                id="category-modal-close"
+                type="button"
+                aria-label="Đóng">
+                &times;
+            </button>
         </div>
+
         <form id="category-form" enctype="multipart/form-data">
-            <input type="hidden" id="category-id">
+            <input
+                type="hidden"
+                id="category-id"
+                name="categoryId">
+
             <div class="form-group">
-                <label for="category-name">Tên danh mục <span>*</span></label>
-                <input id="category-name" maxlength="255" required>
+                <label for="category-name">
+                    Tên danh mục <span>*</span>
+                </label>
+                <input
+                    id="category-name"
+                    name="categoryName"
+                    maxlength="255"
+                    required>
             </div>
+
             <div class="form-group">
                 <label for="category-icon">Chọn ảnh danh mục</label>
-                <input id="category-icon" type="file" accept="image/jpeg,image/png,image/gif,image/webp">
+                <input
+                    id="category-icon"
+                    name="icon"
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp">
                 <small>Khi cập nhật, để trống nếu muốn giữ ảnh hiện tại.</small>
             </div>
+
             <div class="form-actions">
                 <button class="btn btn-primary" type="submit">Lưu thông tin</button>
-                <button class="btn btn-light" id="category-cancel-button" type="button">Hủy</button>
+                <button class="btn btn-light" id="category-cancel-button" type="button">
+                    Hủy
+                </button>
             </div>
         </form>
     </section>

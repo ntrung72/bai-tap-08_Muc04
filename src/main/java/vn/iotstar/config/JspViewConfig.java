@@ -12,7 +12,7 @@ import org.springframework.web.servlet.view.InternalResourceViewResolver;
 @Configuration
 public class JspViewConfig implements WebMvcConfigurer {
 
-    @Value("${app.upload-dir:E:/upload}")
+    @Value("${storage.location:E:/upload}")
     private String uploadDir;
 
     @Bean
@@ -27,7 +27,9 @@ public class JspViewConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        Path uploadRoot = Path.of(uploadDir).toAbsolutePath().normalize();
+        Path uploadRoot = Path.of(uploadDir)
+                .toAbsolutePath()
+                .normalize();
 
         registry.addResourceHandler("/category/**")
                 .addResourceLocations(
@@ -40,6 +42,9 @@ public class JspViewConfig implements WebMvcConfigurer {
 
     private String directoryLocation(Path path) {
         String location = path.toUri().toString();
-        return location.endsWith("/") ? location : location + "/";
+        if (location.endsWith("/")) {
+            return location;
+        }
+        return location + "/";
     }
 }

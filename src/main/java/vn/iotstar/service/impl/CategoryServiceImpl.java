@@ -1,8 +1,10 @@
 package vn.iotstar.service.impl;
 
 import java.util.List;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import vn.iotstar.model.Category;
 import vn.iotstar.repository.CategoryRepository;
 import vn.iotstar.service.CategoryService;
@@ -20,16 +22,24 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     public List<Category> findAll(String keyword) {
         String value = keyword == null ? "" : keyword.trim();
-        List<Category> categories = value.isEmpty() ? repository.findAllByOrderByIdDesc()
-                : repository.findByNameContainingIgnoreCaseOrderByIdDesc(value);
-        categories.forEach(category -> category.setName(TextEncodingUtils.normalize(category.getName())));
+        List<Category> categories;
+
+        if (value.isEmpty()) {
+            categories = repository.findAllByOrderByIdDesc();
+        } else {
+            categories = repository.findByNameContainingIgnoreCaseOrderByIdDesc(value);
+        }
+
+        categories.forEach(category -> category.setName(
+                TextEncodingUtils.normalize(category.getName())));
         return categories;
     }
 
     @Override
     public Category findById(Integer id) {
         Category category = repository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy danh mục có mã " + id + "."));
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Không tìm thấy danh mục có mã " + id + "."));
         category.setName(TextEncodingUtils.normalize(category.getName()));
         return category;
     }
@@ -38,7 +48,9 @@ public class CategoryServiceImpl implements CategoryService {
     @Transactional
     public Category save(Category category) {
         category.setName(TextEncodingUtils.normalize(category.getName()).trim());
-        if (category.getIcon() != null) category.setIcon(category.getIcon().trim());
+        if (category.getIcon() != null) {
+            category.setIcon(category.getIcon().trim());
+        }
         return repository.save(category);
     }
 
@@ -52,8 +64,14 @@ public class CategoryServiceImpl implements CategoryService {
 
     @Override
     public boolean nameExists(String name, Integer excludedId) {
-        if (name == null || name.isBlank()) return false;
-        return excludedId == null ? repository.existsByNameIgnoreCase(name.trim())
-                : repository.existsByNameIgnoreCaseAndIdNot(name.trim(), excludedId);
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+
+        if (excludedId == null) {
+            return repository.existsByNameIgnoreCase(name.trim());
+        }
+
+        return repository.existsByNameIgnoreCaseAndIdNot(name.trim(), excludedId);
     }
 }

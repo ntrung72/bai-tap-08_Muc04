@@ -8,7 +8,9 @@
     <title><c:out value="${pageTitle}" default="Trang quản trị"/></title>
     <link rel="stylesheet" href="${pageContext.request.contextPath}/css/admin.css">
     <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-    <script>var contextPath = "${pageContext.request.contextPath}";</script>
+    <script>
+        var contextPath = "${pageContext.request.contextPath}";
+    </script>
     <c:if test="${not empty pageScript}">
         <script defer src="${pageContext.request.contextPath}${pageScript}"></script>
     </c:if>
